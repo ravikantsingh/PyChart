@@ -26,16 +26,6 @@ class ChatClient:
 
         self.client_socket.close()
 
-    def receive_messages(self):
-        while True:
-            try:
-                data = self.client_socket.recv(1024)
-                if not data:
-                    break
-                print(data.decode('utf-8'))
-            except socket.error:
-                break
-
     def send_messages(self):
         while True:
             try:
@@ -43,6 +33,43 @@ class ChatClient:
                 self.client_socket.sendall(message.encode('utf-8'))
             except socket.error:
                 break
+
+    # Add the following method to ChatClient
+    def send_file(self, filename):
+        try:
+            with open(filename, 'rb') as file:
+                file_content = file.read()
+                self.client_socket.sendall(f"/file {filename}".encode('utf-8'))
+                self.client_socket.sendall(file_content)
+                print(f"File '{filename}' sent successfully.")
+        except FileNotFoundError:
+            print(f"File '{filename}' not found.")
+
+    # Modify the receive_messages method to handle incoming files
+    def receive_messages(self):
+        while True:
+            try:
+                data = self.client_socket.recv(1024)
+                if not data:
+                    break
+
+                message = data.decode('utf-8')
+                if message.startswith("/file"):
+                    filename = message.split()[1]
+                    self.receive_file(filename)
+                else:
+                    print(message)
+            except socket.error:
+                break
+
+    def receive_file(self, filename):
+        try:
+            file_content = self.client_socket.recv(1024)
+            with open(filename, 'wb') as file:
+                file.write(file_content)
+                print(f"File '{filename}' received successfully.")
+        except socket.error:
+            print(f"Error receiving file '{filename}'.")
 
 
 if __name__ == "__main__":

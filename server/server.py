@@ -69,7 +69,22 @@ class ChatServer:
     def get_online_users(self):
         return [username for (_, username) in self.user_addresses]
 
+    # Add the following method to ChatServer
+    def receive_file(self, sender_socket, sender_username, filename, file_content):
+        # Broadcast the file to all connected clients
+        self.broadcast_file(sender_socket, sender_username, filename, file_content)
+
+    def broadcast_file(self, sender_socket, sender_username, filename, file_content):
+        for client, username in self.user_addresses:
+            if client != sender_socket:
+                try:
+                    client.sendall(f"(File from {sender_username}) {filename}".encode('utf-8'))
+                    client.sendall(file_content)
+                except socket.error:
+                    # Handle a disconnected client if needed
+                    pass
+
 
 if __name__ == "__main__":
-    server = ChatServer('localhost', 8888)
+    server = ChatServer('192.168.0.113', 8888)
     server.start()
