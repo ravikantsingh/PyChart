@@ -104,5 +104,5 @@ class ChatClient:
 
 
 if __name__ == "__main__":
-    client = ChatClient('192.168.0113', 8888)
+    client = ChatClient('192.168.0.113', 8888)
     client.connect()
