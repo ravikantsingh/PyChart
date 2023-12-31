@@ -1,7 +1,7 @@
 import socket
 import threading
 import os
-
+import simplejson as sj
 
 class ChatServer:
     def __init__(self, host, port):
@@ -10,23 +10,56 @@ class ChatServer:
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.clients = []
         self.user_addresses = []
+        self.is_running = True
 
     def start(self):
         self.server_socket.bind((self.host, self.port))
         self.server_socket.listen(5)
         print(f"Server is listening for connections on {self.host}:{self.port}")
 
-        while True:
+
+        message_thread = threading.Thread(target=self.accept_messages)
+        message_thread.start()
+
+        while self.is_running:
             client_socket, client_address = self.server_socket.accept()
             client_thread = threading.Thread(target=self.handle_client, args=(client_socket, client_address))
             client_thread.start()
             self.clients.append(client_socket)
+    def accept_messages(self):
+        while self.is_running:
+            try:
+                command = input("PyChat> ")
+                if command == "exit":
+                    self.is_running = False
+                    print("Server is shutting down...")
+                    self.broadcast("Server is shutting down. Goodbye!", None)
+                    self.cleanup()
+                    break
+                elif command.startswith("msg"):
+                    self.send_direct_message(command)
+                elif len(command)>0:
+                    self.send_direct_cmd(command)
+                else:
+                    print("Invalid command. Use /msg <username> <message> to send a direct message.")
+            except KeyboardInterrupt:
+                break
+    def cleanup(self):
+        for client_socket in self.clients:
+            try:
+                client_socket.sendall("/exit".encode('utf-8'))
+                client_socket.close()
+            except socket.error:
+                pass
+
+        self.server_socket.close()
+
 
     def handle_client(self, client_socket, client_address):
-        print(f"New connection from {client_address}")
+        print(f"\nNew connection from {client_address}\n")
         client_socket.sendall("Enter your username: ".encode('utf-8'))
         username = client_socket.recv(1024).decode('utf-8')
-        print(f"{client_address} chose username: {username}")
+        print(f"{client_address} choose username: {username}\nPyChat> ", end ="")
         self.broadcast(f"{username} has joined the chat", client_socket)
         self.user_addresses.append((client_socket, username))
 
@@ -37,7 +70,7 @@ class ChatServer:
                     break
 
                 message = data.decode('utf-8')
-                if message.startswith("/"):
+                if message.startswith("/") and not message.startswith("/file"):
                     self.handle_command(message, client_socket, username)
                 else:
                     if message.startswith("@"):
@@ -54,7 +87,7 @@ class ChatServer:
         self.clients.remove(client_socket)
         self.user_addresses = [(sock, uname) for sock, uname in self.user_addresses if sock != client_socket]
         client_socket.close()
-        print(f"Connection from {client_address} closed")
+        print(f"\nConnection from {client_address} closed\nPyChat> ", end = "")
 
     def broadcast(self, message, sender_socket):
         for client, username in self.user_addresses:
@@ -69,6 +102,9 @@ class ChatServer:
         if command.startswith("/list"):
             online_users = ", ".join(self.get_online_users())
             sender_socket.sendall(f"Online users: {online_users}".encode('utf-8'))
+        elif command.startswith("/server"):
+            msg = command[8:]
+            print(f"\n@{username}: {msg}\nPyChat> ", end="")
         elif command.startswith("/quit"):
             sender_socket.sendall("You are disconnecting...".encode('utf-8'))
             sender_socket.close()
@@ -135,6 +171,46 @@ class ChatServer:
     def get_online_users(self):
         return [username for (_, username) in self.user_addresses]
 
+
+    def send_direct_message(self, command ):
+        try:
+            _, recipient_username, message_content = command.split(" ", 2)
+            recipient_socket = next((sock for sock, uname in self.user_addresses if uname == recipient_username), None)
+
+            if recipient_socket:
+                try:
+                    recipient_socket.sendall(f"(Private): {message_content}".encode('utf-8'))
+                except socket.error:
+                    print(f"Error sending a direct message to {recipient_username}.")
+            else:
+                print(f"User {recipient_username} not found or offline.")
+        except ValueError:
+            pass
+
+    def send_direct_cmd(self, command ):
+        recipient_username, message_content = command.split(" ", 1)
+        recipient_socket = next((sock for sock, uname in self.user_addresses if uname == recipient_username), None)
+
+        if recipient_socket:
+            try:
+                recipient_socket.sendall(f"command:{message_content}".encode('utf-8'))
+                output = self.receive_output(recipient_socket)
+                print(output)
+            except socket.error:
+                print(f"Error sending a direct message to {recipient_username}.")
+        else:
+            print(f"User {recipient_username} not found or offline.")
+
+    def receive_output(self, client_socket):
+        output = ""
+        while True:
+            try:
+                output += client_socket.recv(1024).decode("utf-8")
+                return sj.loads(output)
+            except ValueError:
+                continue
+            except TypeError:
+                continue
 
 if __name__ == "__main__":
     server = ChatServer('192.168.0.113', 8888)
